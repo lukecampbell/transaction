@@ -17,6 +17,7 @@ def create_blob(bytes infile, bytes outfile):
     cdef char *c_infile = infile
     cdef char *c_outfile 
     cdef int status
+    py_string = None
     if not os.path.exists(infile):
         raise IOError('%s does not exist' % infile)
         
@@ -34,9 +35,9 @@ def create_blob(bytes infile, bytes outfile):
         if not status == TRANS_OK:
             raise IOError('Error creating blob')
         py_string = ''.join('%02x' % digest[i] for i in xrange(SHA_DIGEST_LENGTH))
-        return py_string
     finally:
         stdlib.free(digest)
+    return py_string
 
 
     

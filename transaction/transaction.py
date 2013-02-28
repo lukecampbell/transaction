@@ -5,8 +5,10 @@
 '''
 
 from hashlib import sha1
+from bindings import create_blob
 import os
 import zlib
+import gzip
 import msgpack
 import time
 
@@ -37,19 +39,17 @@ class TransactionBlob:
         self.index_path = cas(index_path)
 
     def add_to_index(self):
-        data = None
-        with open(self.filepath,'r') as f:
-            data = f.read()
-        self.sha_hash = sha1('blob %s\0%s' %(len(data), data)).hexdigest()
-        with open(os.path.join(self.index_path,self.sha_hash), 'w') as f:
-            f.write(zlib.compress(data))
+        filename = os.path.basename(self.filepath)
+        
+        self.sha_hash = create_blob(self.filepath, os.path.join(self.index_path, filename))
+        os.rename(os.path.join(self.index_path, filename), os.path.join(self.index_path, self.sha_hash))
 
     @classmethod
     def read_from_index(cls, index_path, sha_hash, filepath):
         data = None
-        with open(os.path.join(index_path, sha_hash),'r') as f:
-            data = zlib.decompress(f.read())
-        data_sha = sha1('blob %s\0%s' % (len(data), data)).hexdigest()
+        with gzip.open(os.path.join(index_path, sha_hash),'r') as f:
+            data = f.read()
+        data_sha = sha1(data).hexdigest()
         if not data_sha == sha_hash:
             raise BlobCorruption('Data integrity compromised')
         if not os.path.exists(os.path.dirname(filepath)):
