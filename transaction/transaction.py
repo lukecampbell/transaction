@@ -12,15 +12,7 @@ import gzip
 import msgpack
 import time
 
-
-class BlobCorruption(IOError):
-    pass
-
-class TreeCorruption(IOError):
-    pass
-
-class TransactionCorruption(IOError):
-    pass
+from errors import BlobCorruption, TreeCorruption, TransactionCorruption, RepositoryError, TransactionIndexError
 
 
 class TransactionBlob:
@@ -173,9 +165,27 @@ class Transaction:
         try:
             head = self.HEAD
         except IOError:
-            raise TransactionCorruption('No HEAD, recommend reverting to latest commit in logs.')
+            raise TransactionCorruption('No HEAD, recommend reverting to latest commit in logs')
         if not head == sha:
             raise TransactionCorruption('Transaction integrity compromised')
+
+class TransactionRepository:
+    def __init__(self, index_path):
+        self.blobs = {}
+        self.index_path = index_path
+
+    def add_blob(self, blob):
+        if not os.path.exists(os.path.join(self.index_path, blob.sha_hash)):
+            raise TransactionIndexError('Missing from index: %s\t%s' % ( blob.sha_hash, blob.filepath))
+        self.blobs[blob.sha_hash] = 1
+
+    def delete_blob(self, blob):
+        if blob.sha_hash not in self.blobs:
+            raise RepositoryError('Blob %s not tracked by repository' % blob.sha_hash)
+        self.blobs[blob.sha_hash]-= 1
+        if self.blobs[blob.sha_hash] < 1:
+            del self.blobs[blob.sha_hash]
+            os.remove(os.path.join(self.index_path, blob.sha_hash))
 
 
 def cas(path):
