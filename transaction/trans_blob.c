@@ -26,6 +26,58 @@ int trans_tmp_file(char *filename, size_t len) {
     return fd;
 }
 
+int read_something(SHA_CTX *ctxt, z_stream *strm, int fd_in, int fd_out, void *buffer, size_t buffer_length)
+{
+    char zbuffer[Z_CHUNK_SIZE];
+    size_t bytes_read =0;
+    int zstatus=0;
+    while((bytes_read = read(fd_in, buffer, buffer_length)) > 0) {
+        /* Read several bytes into a buffer then get the hash */
+        SHA1_Update(ctxt, buffer, bytes_read);
+
+        strm->next_in = (Byte *)  buffer;
+        strm->avail_in = bytes_read;
+
+        while(strm->avail_in > 0) {
+            /* While there are still bytes to be deflated and written */
+            size_t n=0, total=0;
+            strm->avail_out = Z_CHUNK_SIZE;
+            strm->next_out = zbuffer;
+            zstatus = deflate(strm, Z_NO_FLUSH);
+            if(zstatus != Z_OK) {
+                TRANS_ERROR(TRANS_GZIP_ERROR, "Failed to deflate file buffer");
+            }
+            while(total < (Z_CHUNK_SIZE - strm->avail_out)) {
+                /* Until we have written all the zbuffe bytes, keep writing */
+                n = write(fd_out, zbuffer + total, (Z_CHUNK_SIZE - strm->avail_out));
+                if(n<0) {
+                    TRANS_ERROR(TRANS_FILE_ERROR, "Failed to write gzip buffer");
+                }
+                total += n;
+            }
+        }
+    }
+    while(zstatus != Z_STREAM_END) {
+        /* We're done reading but now we need to flush the rest of the 
+         * deflated bytes */
+        size_t n=0, total=0;
+        strm->avail_out = Z_CHUNK_SIZE;
+        strm->next_out = zbuffer;
+        zstatus = deflate(strm, Z_FINISH);
+        if(zstatus != Z_OK && zstatus != Z_STREAM_END) {
+            TRANS_ERROR(TRANS_GZIP_ERROR, "Failed to finalize deflation");
+        }
+        while(total < (Z_CHUNK_SIZE - strm->avail_out)) {
+            n = write(fd_out, zbuffer + total, (Z_CHUNK_SIZE - strm->avail_out) - total);
+            
+            if(n<0) {
+                TRANS_ERROR(TRANS_FILE_ERROR, "Failed to write the final gzip buffer");
+            }
+            total += n;
+        }
+    }
+}
+
 
 int trans_create_blob(const char *infile, const char *outfile, unsigned char *digest) {
     int fd_in, fd_out;
@@ -68,24 +120,26 @@ int trans_create_blob(const char *infile, const char *outfile, unsigned char *di
     }
 
     while((bytes_read = read(fd_in, buffer, TRANS_FILE_READ_BUFFER))>0) {
-        n=0;
-        total=0;
         SHA1_Update(&ctxt, buffer, bytes_read);
-        strm.avail_out = Z_CHUNK_SIZE;
-        strm.next_out = (Bytef *)zbuffer;
         strm.next_in = (Byte *)buffer;
         strm.avail_in = bytes_read;
-        zstatus = deflate(&strm, Z_NO_FLUSH);
-        if(zstatus != Z_OK) {
-            TRANS_ERROR(TRANS_GZIP_ERROR, "Failed to deflate file buffer");
-        }
-        do { /* Continue writing in case of partial writes */
-            n = write(fd_out, zbuffer + total, (Z_CHUNK_SIZE - strm.avail_out) - total);
-            if(n<0) {
-                TRANS_ERROR(TRANS_FILE_ERROR, "Failed to write gzip buffer");
+        while (strm.avail_in > 0) {
+            strm.avail_out = Z_CHUNK_SIZE;
+            strm.next_out = (Bytef *)zbuffer;
+            zstatus = deflate(&strm, Z_NO_FLUSH);
+            n=0;
+            total=0;
+            if(zstatus != Z_OK) {
+                TRANS_ERROR(TRANS_GZIP_ERROR, "Failed to deflate file buffer");
             }
-            total += n;
-        } while(total < (Z_CHUNK_SIZE - strm.avail_out));
+            do { /* Continue writing in case of partial writes */
+                n = write(fd_out, zbuffer + total, (Z_CHUNK_SIZE - strm.avail_out) - total);
+                if(n<0) {
+                    TRANS_ERROR(TRANS_FILE_ERROR, "Failed to write gzip buffer");
+                }
+                total += n;
+            } while(total < (Z_CHUNK_SIZE - strm.avail_out));
+        }
     }
     do {
         strm.avail_out = Z_CHUNK_SIZE;

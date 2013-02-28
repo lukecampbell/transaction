@@ -38,16 +38,23 @@ class TransactionBlob:
 
     @classmethod
     def read_from_index(cls, index_path, sha_hash, filepath):
-        data = None
-        with gzip.open(os.path.join(index_path, sha_hash),'r') as f:
-            data = f.read()
-        data_sha = sha1(data).hexdigest()
+        data_sha = sha1()
+        if not os.path.exists(os.path.join(index_path, sha_hash)):
+            raise IOError("No such file %s" % os.path.join(index_path, sha_hash))
+        with gzip.open(os.path.join(index_path, sha_hash), 'r') as gz_f:
+            with open(filepath,'w') as out:
+                data =1
+                while data:
+                    data = gz_f.read(1024 * 512)
+                    data_sha.update(data)
+                    out.write(data)
+        data_sha = data_sha.hexdigest()
         if not data_sha == sha_hash:
+            print 'data_sha: ', data_sha
+            print 'expected: ', sha_hash
             raise BlobCorruption('Data integrity compromised')
         if not os.path.exists(os.path.dirname(filepath)):
             os.makedirs(os.path.dirname(filepath))
-        with open(filepath, 'w') as f:
-            f.write(data)
         instance = cls(index_path, filepath)
         instance.sha_hash = sha_hash
         instance.index_path = index_path
