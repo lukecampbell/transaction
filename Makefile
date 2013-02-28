@@ -1,6 +1,6 @@
 CC=gcc
 LDFLAGS=  -lssl -lcrypto -lz
-CPPFLAGS= -std=c99 -Wall -g -ggdb -O3
+CPPFLAGS= -std=c99 -Wall -g -ggdb 
 OBJECTS=trans_blob.o
 
 trans_blob: $(OBJECTS)

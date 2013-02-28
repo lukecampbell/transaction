@@ -18,24 +18,24 @@ int trans_tmp_file(char *filename, size_t len) {
     size_t slen = 16;
     int fd;
 
-    for(int i=0;i<len;i++) {
+    for(int i=0;i<len-2;i++) {
         filename[i] = hex_alphabet[ rand() % slen];
     }
+    filename[len-1] = '\0';
     fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     return fd;
 }
 
 
-
 int trans_create_blob(const char *infile, const char *outfile, unsigned char *digest) {
     int fd_in, fd_out;
-    char buffer[TRANS_FILE_READ_BUFFER];
-    char zbuffer[Z_CHUNK_SIZE];
     int zstatus;
     char temp_filename[40];
     size_t bytes_read=0;
     z_stream strm;
     SHA_CTX ctxt;
+    char buffer[TRANS_FILE_READ_BUFFER];
+    char zbuffer[Z_CHUNK_SIZE];
     bzero(&strm, sizeof(z_stream));
 
     strm.next_in = (Bytef *)buffer;
@@ -58,20 +58,18 @@ int trans_create_blob(const char *infile, const char *outfile, unsigned char *di
         if(fd_out < 0) {
             TRANS_ERROR(TRANS_FILE_ERROR, "Failed to create temporary file");
         }
-        printf("Temp file: %s\n", temp_filename);
     }
     else {
         if((fd_out = open(outfile, O_WRONLY | O_CREAT | O_TRUNC, 0644))<0) {
             TRANS_ERROR(TRANS_FILE_ERROR, "Failed to open output file for writing");
         }
     }
-    if(!outfile)
-        printf("Temp file: %s\n", temp_filename);
 
     while((bytes_read = read(fd_in, buffer, TRANS_FILE_READ_BUFFER))>0) {
         SHA1_Update(&ctxt, buffer, bytes_read);
         strm.avail_out = Z_CHUNK_SIZE;
         strm.next_out = (Bytef *)zbuffer;
+        strm.next_in = (Byte *)buffer;
         strm.avail_in = bytes_read;
         zstatus = deflate(&strm, Z_NO_FLUSH);
         if(zstatus != Z_OK) {
@@ -91,27 +89,19 @@ int trans_create_blob(const char *infile, const char *outfile, unsigned char *di
         TRANS_ERROR(TRANS_FILE_ERROR, "Failed to write the final gzip buffer");
     }
 
-    if(!outfile)
-        printf("Temp file: %s\n", temp_filename);
     SHA1_Final(digest, &ctxt);
     deflateEnd(&strm);
     close(fd_in);
     close(fd_out);
     if(outfile == NULL) { 
-        printf("Temp file: %s\n", temp_filename);
-        char str_digest[40];
+        char str_digest[SHA_DIGEST_LENGTH*2+1];
         for(int i=0;i<SHA_DIGEST_LENGTH;i++) {
-            snprintf(str_digest+(i*2), SHA_DIGEST_LENGTH - (i*2), "%02x", digest[i]);
+            snprintf(str_digest+(i*2), 3, "%02x", digest[i]);
         }
-        if(rename(temp_filename, str_digest)<0) {
-            printf("%s\n", strerror(errno));
-            printf("%s\n", temp_filename);
-            printf("%s\n", str_digest);
+        if(rename(temp_filename,str_digest)<0) {
             TRANS_ERROR(TRANS_FILE_ERROR, "Failed to rename the file");
         }
-        printf("Renamed to %s\n", str_digest);
     }
-
     return TRANS_OK;
 }
 
