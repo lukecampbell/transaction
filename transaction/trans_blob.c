@@ -32,6 +32,8 @@ int trans_create_blob(const char *infile, const char *outfile, unsigned char *di
     int zstatus;
     char temp_filename[40];
     size_t bytes_read=0;
+    size_t n=0;
+    size_t total=0;
     z_stream strm;
     SHA_CTX ctxt;
     char buffer[TRANS_FILE_READ_BUFFER];
@@ -66,6 +68,8 @@ int trans_create_blob(const char *infile, const char *outfile, unsigned char *di
     }
 
     while((bytes_read = read(fd_in, buffer, TRANS_FILE_READ_BUFFER))>0) {
+        n=0;
+        total=0;
         SHA1_Update(&ctxt, buffer, bytes_read);
         strm.avail_out = Z_CHUNK_SIZE;
         strm.next_out = (Bytef *)zbuffer;
@@ -75,19 +79,28 @@ int trans_create_blob(const char *infile, const char *outfile, unsigned char *di
         if(zstatus != Z_OK) {
             TRANS_ERROR(TRANS_GZIP_ERROR, "Failed to deflate file buffer");
         }
-        if(write(fd_out, zbuffer, Z_CHUNK_SIZE - strm.avail_out) < 0) {
-            TRANS_ERROR(TRANS_FILE_ERROR, "Failed to write gzip buffer");
-        }
+        do { /* Continue writing in case of partial writes */
+            n = write(fd_out, zbuffer + total, (Z_CHUNK_SIZE - strm.avail_out) - total);
+            if(n<0) {
+                TRANS_ERROR(TRANS_FILE_ERROR, "Failed to write gzip buffer");
+            }
+            total += n;
+        } while(total < (Z_CHUNK_SIZE - strm.avail_out));
     }
     strm.avail_out = Z_CHUNK_SIZE;
     strm.next_out = (Bytef *)zbuffer;
     zstatus = deflate(&strm, Z_FINISH);
     if(zstatus != Z_STREAM_END)
         return TRANS_GZIP_ERROR;
-
-    if(write(fd_out,zbuffer,Z_CHUNK_SIZE - strm.avail_out) < 0)  {
-        TRANS_ERROR(TRANS_FILE_ERROR, "Failed to write the final gzip buffer");
-    }
+    n=0;
+    total=0;
+    do {
+        n = write(fd_out,zbuffer + total,(Z_CHUNK_SIZE - strm.avail_out) - total);
+        if(n<0) {
+            TRANS_ERROR(TRANS_FILE_ERROR, "Failed to write the final gzip buffer");
+        }
+        total +=n;
+    } while(total < (Z_CHUNK_SIZE - strm.avail_out));
 
     SHA1_Final(digest, &ctxt);
     deflateEnd(&strm);
