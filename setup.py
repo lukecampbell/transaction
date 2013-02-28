@@ -13,7 +13,7 @@ import sys
 if 'setuptools.extension' in sys.modules:
     m = sys.modules['setuptools.extension']
     m.Extension.__dict__ = m._Extension.__dict__
-bindings_extension = Extension("transaction.bindings", ["transaction/bindings.pyx", 'trans_blob.c'], libraries=['ssl','z','crypto'] )
+bindings_extension = Extension("transaction.bindings", ["transaction/bindings.pyx", 'transaction/trans_blob.c'], libraries=['ssl','z','crypto'] )
 
 
 classifiers = ''' Intended Audience :: Science/Research
@@ -27,7 +27,7 @@ Topic :: Software Development :: Libraries :: Python Modules'''
 setup(name = 'transaction', 
         version='0.0.1',
         description='Transactional file system',
-        long_description=open('README.txt').read(),
+        long_description=open('README.md').read(),
         license='LICENSE.txt',
         author='Luke Campbell',
         author_email='luke.s.campbell@gmail.com',
