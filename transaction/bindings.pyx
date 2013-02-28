@@ -2,6 +2,7 @@
 cdef extern from "trans.h":
     int trans_create_blob( char *infile,  char *outfile, unsigned char *digest) 
     int TRANS_OK
+    char *trans_error
 
 cdef extern from "openssl/sha.h":
     int SHA_DIGEST_LENGTH
@@ -33,7 +34,10 @@ def create_blob(bytes infile, bytes outfile):
         digest = <unsigned char *>stdlib.malloc(SHA_DIGEST_LENGTH)
         status = trans_create_blob(c_infile, c_outfile, digest)
         if not status == TRANS_OK:
-            raise IOError('Error creating blob')
+            if trans_error != NULL:
+                raise IOError(<bytes> trans_error)
+            else:
+                raise IOError('There was a problem')
         py_string = ''.join('%02x' % digest[i] for i in xrange(SHA_DIGEST_LENGTH))
     finally:
         stdlib.free(digest)

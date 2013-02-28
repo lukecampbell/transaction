@@ -87,20 +87,23 @@ int trans_create_blob(const char *infile, const char *outfile, unsigned char *di
             total += n;
         } while(total < (Z_CHUNK_SIZE - strm.avail_out));
     }
-    strm.avail_out = Z_CHUNK_SIZE;
-    strm.next_out = (Bytef *)zbuffer;
-    zstatus = deflate(&strm, Z_FINISH);
-    if(zstatus != Z_STREAM_END)
-        return TRANS_GZIP_ERROR;
-    n=0;
-    total=0;
     do {
-        n = write(fd_out,zbuffer + total,(Z_CHUNK_SIZE - strm.avail_out) - total);
-        if(n<0) {
-            TRANS_ERROR(TRANS_FILE_ERROR, "Failed to write the final gzip buffer");
+        strm.avail_out = Z_CHUNK_SIZE;
+        strm.next_out = (Bytef *)zbuffer;
+        zstatus = deflate(&strm, Z_FINISH);
+        if(zstatus != Z_STREAM_END && zstatus != Z_OK) {
+            TRANS_ERROR(TRANS_GZIP_ERROR, "Failed to finalize deflation");
         }
-        total +=n;
-    } while(total < (Z_CHUNK_SIZE - strm.avail_out));
+        n=0;
+        total=0;
+        do {
+            n = write(fd_out,zbuffer + total,(Z_CHUNK_SIZE - strm.avail_out) - total);
+            if(n<0) {
+                TRANS_ERROR(TRANS_FILE_ERROR, "Failed to write the final gzip buffer");
+            }
+            total +=n;
+        } while(total < (Z_CHUNK_SIZE - strm.avail_out));
+    } while(zstatus != Z_STREAM_END);
 
     SHA1_Final(digest, &ctxt);
     deflateEnd(&strm);
