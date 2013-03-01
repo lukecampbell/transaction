@@ -131,34 +131,57 @@ class TransactionLog(TransactionObject):
         return repr(self._log)
 
 
-class Transaction:
+class Transaction(TransactionObject):
     
     def __init__(self, root):
-        self.log        = None
-        self.index_path = None
+        TransactionObject.__init__(self, '.index')
+
         self.root = root
-        self.index_path = cas(os.path.join(root,'.index'))
-        if not os.path.exists(self.index_path):
-            os.mkdir(self.index_path)
         self.log = TransactionLog(self.index_path)
 
-    def commit(self):
+    def add_to_index(self):
         tree = TransactionTree(self.index_path)
+        repo = TransactionRepository(self.index_path)
         for root, dirs, files in os.walk(self.root):
             if '.index' in root: continue
             for f in files:
                 tb = TransactionBlob(self.index_path,os.path.join(root,f))
                 tree.add(tb)
+                repo.add_blob(tb)
         tree.add_to_index()
-        self.log.add_tree(tree)
-        with open(os.path.join(self.index_path,'HEAD'),'w') as f:
-            f.write(tree.sha_hash)
+        repo.add_to_index()
+        self.log.add_tree(tree, repo)
+        data = '%s %s' %(tree.sha_hash, repo.sha_hash)
+        data_hash = self.hash_me(data)
+        with open(os.path.join(self.index_path,data_hash),'w') as f:
+            f.write(data)
 
-    def checkout(self,sha):
-        tree = TransactionTree.read_from_index(self.index_path,sha)
-        tree.apply()
         with open(os.path.join(self.index_path,'HEAD'),'w') as f:
-            f.write(tree.sha_hash)
+            f.write(data_hash)
+
+    @classmethod
+    def read_from_index(cls,index_path,sha):
+        data = None
+        with open(os.path.join(index_path,sha),'r') as f:
+            data = f.read()
+        if cls.hash_me(data) != sha:
+            raise TransactionCorruption('The transaction integrity is compromised')
+        tree_hash, repo_hash = data.split()
+        
+        tree = TransactionTree.read_from_index(index_path,tree_hash)
+        tree.apply()
+
+        inst = cls(index_path)
+        inst.sha_hash = sha
+        return inst
+
+    @classmethod
+    def remove_transaction(cls, index_path, sha):
+        pass
+
+        
+
+
 
     @property
     def HEAD(self):
@@ -166,6 +189,11 @@ class Transaction:
         with open(os.path.join(self.index_path,'HEAD'),'r') as f:
                 data = f.read()
         return data
+
+    @classmethod
+    def hash_me(cls, data):
+        data = 'commit %s\0%s' %(len(data),data)
+        return sha1(data).hexdigest()
 
 
     def check_integrity(self):
