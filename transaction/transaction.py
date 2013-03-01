@@ -208,9 +208,14 @@ class TransactionRepository(TransactionObject):
 
 
     def add_blob(self, blob):
+        if blob.sha_hash is None:
+            blob.add_to_index()
         if not os.path.exists(os.path.join(self.index_path, blob.sha_hash)):
             raise TransactionIndexError('Missing from index: %s\t%s' % ( blob.sha_hash, blob.filepath))
-        self.blobs[blob.sha_hash] = 1
+        if blob.sha_hash not in self.blobs:
+            self.blobs[blob.sha_hash] = 1
+        else:
+            self.blobs[blob.sha_hash] += 1
 
     def delete_blob(self, blob):
         if blob.sha_hash not in self.blobs:

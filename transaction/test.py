@@ -174,7 +174,33 @@ class TestLog(TransactionTest):
 
 
 class TestRepository(TransactionTest):
-    pass
+    @attr('short')
+    def test_basic_repo(self):
+        file1 = './file1'
+        file2 = './file2'
+        self.make_fake_data(file1)
+        self.addCleanup(os.remove,file1)
+        self.make_fake_data(file2)
+        self.addCleanup(os.remove,file2)
+        
+        tb1 = TransactionBlob(index, file1)
+        tb2 = TransactionBlob(index, file2)
+
+        repo = TransactionRepository(index)
+        repo.add_blob(tb1)
+        repo.add_blob(tb2)
+
+        self.assertEquals(repo.blobs[tb1.sha_hash], 2)
+
+        repo.delete_blob(tb1)
+
+        self.assertEquals(repo.blobs[tb1.sha_hash], 1)
+
+        repo.delete_blob(tb1)
+
+        self.assertFalse(os.path.exists(os.path.join(index, tb1.sha_hash)))
+
+
 
 class TestTransaction(TransactionTest):
     pass
