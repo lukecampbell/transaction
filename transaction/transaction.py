@@ -12,23 +12,26 @@ import gzip
 import msgpack
 import time
 
-from errors import BlobCorruption, TreeCorruption, TransactionCorruption, RepositoryError, TransactionIndexError
+from errors import BlobCorruption, TreeCorruption, TransactionCorruption, RepositoryError, TransactionIndexError, RepositoryCorruption
 
 
-class TransactionBlob:
+class TransactionObject:
+    def __init__(self, index_path):
+        self.index_path = cas(index_path)
+        self.sha_hash   = None
+
+class TransactionBlob(TransactionObject):
     '''
     Binary data object in the index
 
     Concept from Linus Torvalds, implementation concept from David Stuebe
     '''
     def __init__(self,index_path,filepath):
+        TransactionObject.__init__(self, index_path)
         self.filepath   = ''
-        self.sha_hash   = None
-        self.index_path = None
         if not os.path.exists(filepath):
             raise IOError("Can't read %s" % filepath)
         self.filepath   = filepath
-        self.index_path = cas(index_path)
 
     def add_to_index(self):
         filename = os.path.basename(self.filepath)
@@ -62,12 +65,10 @@ class TransactionBlob:
         return instance
 
 
-class TransactionTree:
+class TransactionTree(TransactionObject):
     def __init__(self, index_path):
         self._tree      = {}
-        self.sha_hash   = None
-        self.index_path = None
-        self.index_path = cas(index_path)
+        TransactionObject.__init__(self, index_path)
 
     def add(self, blob):
         if blob.sha_hash is None:
@@ -108,19 +109,21 @@ class TransactionTree:
 
 
 
-class TransactionLog:
+class TransactionLog(TransactionObject):
     def __init__(self, index_path):
+        TransactionObject.__init__(self, index_path)
         self._log       = []
-        self.index_path = cas(index_path)
         self.log_path = os.path.join(self.index_path,'log')
         if os.path.exists(self.log_path):
             with open(self.log_path, 'r') as f:
                 self._log = list(msgpack.unpackb(f.read()))
 
-    def add_tree(self,tree):
+    def add(self,tree,repo):
         if tree.sha_hash is None:
             tree.add_to_index()
-        self._log.append((tree.sha_hash, time.time()))
+        if repo.sha_hash is None:
+            repo.add_to_index()
+        self._log.append((tree.sha_hash, repo.sha_hash, time.time()))
         with open(self.log_path,'w') as f:
             f.write(msgpack.packb(self._log))
 
@@ -177,10 +180,32 @@ class Transaction:
         if not head == sha:
             raise TransactionCorruption('Transaction integrity compromised')
 
-class TransactionRepository:
+class TransactionRepository(TransactionObject):
     def __init__(self, index_path):
+        TransactionObject.__init__(self, index_path)
         self.blobs = {}
-        self.index_path = index_path
+
+    def add_to_index(self):
+        data = msgpack.packb(self.blobs)
+        self.sha_hash = self.hash_me(data)
+        with gzip.open(os.path.join(self.index_path, self.sha_hash), 'w') as gz_f:
+            gz_f.write(data)
+
+    @classmethod
+    def read_from_index(cls, index_path, sha_hash):
+        data = None
+        with gzip.open(os.path.join(index_path, sha_hash)) as gz_f:
+            data = gz_f.read()
+        data_hash = cls.hash_me(data)
+        if not data_hash == sha_hash:
+            raise RepositoryCorruption('The Repository integrity is compromised')
+        
+        blobs = msgpack.unpackb(data)
+        inst = cls(index_path)
+        inst.blobs = blobs
+        inst.sha_hash = sha_hash
+        return inst
+
 
     def add_blob(self, blob):
         if not os.path.exists(os.path.join(self.index_path, blob.sha_hash)):
@@ -194,7 +219,11 @@ class TransactionRepository:
         if self.blobs[blob.sha_hash] < 1:
             del self.blobs[blob.sha_hash]
             os.remove(os.path.join(self.index_path, blob.sha_hash))
-
+    
+    @classmethod
+    def hash_me(cls, data):
+        data = 'repo %s\0%s' %(len(data), data)
+        return sha1(data).hexdigest()
 
 def cas(path):
     if not os.path.exists(path):

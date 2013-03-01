@@ -151,7 +151,8 @@ class TestLog(TransactionTest):
         log = TransactionLog(index)
         tree = TransactionTree(index)
 
-        log.add_tree(tree)
+        repo = TransactionRepository(index)
+        log.add(tree, repo)
 
         file1 = './file1'
         file2 = './file2'
@@ -166,7 +167,7 @@ class TestLog(TransactionTest):
         tree2.add(tb1)
         tree2.add(tb2)
 
-        log.add_tree(tree2)
+        log.add(tree2, repo)
 
         self.assertEquals(log._log[0][0], tree.sha_hash)
         self.assertEquals(log._log[1][0], tree2.sha_hash)

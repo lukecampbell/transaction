@@ -12,5 +12,8 @@ class TransactionCorruption(IOError):
 class TransactionIndexError(IOError):
     pass
 
+class RepositoryCorruption(IOError):
+    pass
+
 class RepositoryError(Exception):
     pass
