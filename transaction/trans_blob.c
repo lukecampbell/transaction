@@ -57,6 +57,9 @@ int trans_pipe(SHA_CTX *ctxt, z_stream *strm, int fd_in, int fd_out, void *buffe
             }
         }
     }
+    if(bytes_read < 0) {
+        TRANS_ERROR(TRANS_FILE_ERROR, "Failed to read from input");
+    }
     while(zstatus != Z_STREAM_END) {
         /* We're done reading but now we need to flush the rest of the 
          * deflated bytes */
