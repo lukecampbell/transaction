@@ -47,7 +47,7 @@ class TestBlob(TransactionTest):
         sha = sha1()
         with open('/dev/urandom','r') as f_in: 
             with open(ugly_file, 'w') as f_out:
-                while f_in.tell() < (1024*1024*3):
+                while f_in.tell() < (1024*1024*64):
                     buf = f_in.read(1024*256)
                     sha.update(buf)
                     f_out.write(buf)
@@ -61,7 +61,7 @@ class TestBlob(TransactionTest):
 
         self.assertTrue(os.path.exists(os.path.join(index,sha_hash)))
 
-        tb.read_from_index(index, sha_hash, os.path.join('.','arg'))
+        tb.read_from_index(index, sha_hash, os.path.join('.',ugly_file))
 
         new_hash = sha1()
         with open(ugly_file,'r') as f:
@@ -69,13 +69,6 @@ class TestBlob(TransactionTest):
                 data = f.read(1024)
                 new_hash.update(data)
         self.assertEquals(new_hash.hexdigest(), sha.hexdigest())
-
-
-
-
-        
-
-
 
 class TestLog(TransactionTest):
     pass
