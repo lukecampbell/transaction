@@ -36,7 +36,10 @@ setup(name = 'transaction',
         classifiers=classifiers.split('\n'),
         packages=packages,
         keywords=[],
-        setup_requires=['setuptools_cython'],
+        setup_requires=[
+            'setuptools_cython',
+            'msgpack-python==0.1.13',
+            ],
         )
 
 

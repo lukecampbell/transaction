@@ -41,17 +41,18 @@ class TransactionBlob:
         data_sha = sha1()
         if not os.path.exists(os.path.join(index_path, sha_hash)):
             raise IOError("No such file %s" % os.path.join(index_path, sha_hash))
-        with gzip.open(os.path.join(index_path, sha_hash), 'r') as gz_f:
-            with open(filepath,'w') as out:
-                data =1
-                while data:
-                    data = gz_f.read(1024 * 512)
-                    data_sha.update(data)
-                    out.write(data)
+        try:
+            with gzip.open(os.path.join(index_path, sha_hash), 'r') as gz_f:
+                with open(filepath,'w') as out:
+                    data =1
+                    while data:
+                        data = gz_f.read(1024 * 512)
+                        data_sha.update(data)
+                        out.write(data)
+        except IOError as e:
+            raise BlobCorruption(e)
         data_sha = data_sha.hexdigest()
         if not data_sha == sha_hash:
-            print 'data_sha: ', data_sha
-            print 'expected: ', sha_hash
             raise BlobCorruption('Data integrity compromised')
         if not os.path.exists(os.path.dirname(filepath)):
             os.makedirs(os.path.dirname(filepath))
@@ -71,20 +72,20 @@ class TransactionTree:
     def add(self, blob):
         if blob.sha_hash is None:
             blob.add_to_index()
-        self._tree[blob.sha_hash] = blob.filepath
+        self._tree[blob.filepath] = blob.sha_hash
 
     def add_to_index(self):
-        data = zlib.compress(msgpack.packb(self._tree))
-        sha_hash = self.hash_me(data)
-        with open(os.path.join(self.index_path, sha_hash),'w') as f:
-            f.write(data)
-        self.sha_hash = sha_hash
+        data = msgpack.packb(self._tree)
+        self.sha_hash = self.hash_me(data)
+        with gzip.open(os.path.join(self.index_path, self.sha_hash), 'w') as gz_f:
+            gz_f.write(data)
 
     @classmethod
     def read_from_index(cls, index_path, sha_hash):
         data = None
-        with open(os.path.join(index_path, sha_hash),'r') as f:
-            data = zlib.decompress(f.read())
+        with gzip.open(os.path.join(index_path,sha_hash),'r') as gz_f:
+            data = gz_f.read()
+
         data_hash = cls.hash_me(data)
         if not data_hash == sha_hash:
             raise TreeCorruption('The Tree integrity is compromised')
@@ -97,7 +98,7 @@ class TransactionTree:
         return instance
 
     def apply(self):
-        for sha,path in self._tree.iteritems():
+        for path,sha in self._tree.iteritems():
             TransactionBlob.read_from_index(self.index_path, sha, path)
 
     @classmethod
@@ -110,8 +111,6 @@ class TransactionTree:
 class TransactionLog:
     def __init__(self, index_path):
         self._log       = []
-        self.index_path = None
-        self.log_path   = None
         self.index_path = cas(index_path)
         self.log_path = os.path.join(self.index_path,'log')
         if os.path.exists(self.log_path):
@@ -119,6 +118,8 @@ class TransactionLog:
                 self._log = list(msgpack.unpackb(f.read()))
 
     def add_tree(self,tree):
+        if tree.sha_hash is None:
+            tree.add_to_index()
         self._log.append((tree.sha_hash, time.time()))
         with open(self.log_path,'w') as f:
             f.write(msgpack.packb(self._log))
